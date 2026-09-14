@@ -247,6 +247,40 @@ This key's jobs, newest first (`limit` 1–100).
 
 The MP4 (`Content-Type: video/mp4`). `409 not_ready` until the job is done.
 
+### Web app endpoints
+
+The Wisko web app and desktop app use these with the signed-in session (cookie) or the licence key. They are not part of the `/v1` API and may change; build integrations on `/v1`.
+
+Zip batches:
+
+```
+POST /api/batch/upload                   multipart: archive=<zip>; returns a preflight report
+POST /api/batch/{id}/start
+GET  /api/batch/{id}/status
+POST /api/batch/{id}/pause
+POST /api/batch/{id}/cancel
+GET  /api/batch/{id}/download            all completed clips (zip, built on demand)
+GET  /api/batch/{id}/item/{seq}/download one clip; 409 not finished yet, 410 the file is gone
+```
+
+Pipeline and modes (health reports what degrades in each mode, not only what is down):
+
+```
+GET /api/pipeline/modes     services each mode uses, with exclusion reasons
+GET /api/pipeline/health    per-service health and what degrades in each mode
+```
+
+Provider keys (bring your own AI keys; several per provider rotate, a rate-limited key rests a minute, a rejected key is parked and flagged; secrets are validated, encrypted at rest and never returned):
+
+```
+GET    /api/providers                      providers and their fields
+GET    /api/providers/{kind}/keys          keys and live status
+POST   /api/providers/{kind}/keys          {api_key, label}
+PATCH  /api/providers/{kind}/keys/{key_id} {enabled} or {reset: true}
+DELETE /api/providers/{kind}/keys/{key_id}
+GET    /api/providers/usage                per-key call accounting
+```
+
 ### Errors
 
 | HTTP | code | Meaning |

@@ -86,6 +86,18 @@ job = client.jobs.create(prompt="A 60-second explainer on why bees matter to far
 
 More in [`python/README.md`](python/README.md) and [`examples/`](examples/).
 
+Captions and pickers. Ids come from the public catalogues (`client.catalogues`: styles, voices, music,
+transitions, entrance effects, hand styles, visual effects, video formats, caption styles):
+
+```python
+styles = client.catalogues.caption_styles()["styles"]              # 13 premium caption styles
+client.catalogues.caption_preview("karaoke_fill", "karaoke.webp")  # animated preview of how it moves
+job = client.jobs.create(images=["01.png"], narration="This one trick saves $500 every month.",
+                         captions="on", caption_style="karaoke_fill")
+```
+
+Every endpoint, catalogue and setting: [`docs/API.md`](docs/API.md) and [`docs/llms-full.txt`](docs/llms-full.txt).
+
 ## Rules every job follows
 
 - **Images per job** are capped by your plan (`GET /v1/me` → `limits.images_per_job`).

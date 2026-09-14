@@ -165,6 +165,58 @@ class Jobs:
         return str(path)
 
 
+class Catalogues:
+    """The public pickers. Use the ids they return as job settings; never
+    hard-code them."""
+
+    def __init__(self, t: _Transport):
+        self._t = t
+
+    def _get(self, path: str, **params) -> dict:
+        return self._t.request("GET", path, params={k: v for k, v in params.items() if v is not None}).json()
+
+    def styles(self) -> dict:
+        """`{style_id: {...}}` -- pass the key as `style_id`."""
+        return self._get("/api/packs").get("data", {})
+
+    def voices(self, engine: Optional[str] = None, lang: Optional[str] = None) -> List[dict]:
+        return self._get("/api/tts/voices", engine=engine, lang=lang).get("voices", [])
+
+    def music(self) -> List[dict]:
+        return self._get("/api/music").get("tracks", [])
+
+    def transitions(self) -> List[dict]:
+        return self._get("/api/transitions").get("transitions", [])
+
+    def entrance_effects(self) -> List[dict]:
+        return self._get("/api/entrance-effects").get("effects", [])
+
+    def hand_styles(self) -> dict:
+        return self._get("/api/hand-styles")
+
+    def visual_effects(self) -> dict:
+        return self._get("/auto/api/visual_effects")
+
+    def video_formats(self) -> dict:
+        return self._get("/auto/api/video_formats")
+
+    def caption_styles(self) -> dict:
+        """`{styles, default, positions, highlights, animations, fonts, form_fields}`."""
+        return self._get("/api/caption-styles")
+
+    def caption_preview(self, style_id: str, path: PathLike, *, width: int = 360, animated: bool = True,
+                        **overrides: Any) -> str:
+        """Save how a caption style looks and moves: an animated WebP (a PNG
+        with animated=False). `overrides` are caption_* fields, for example
+        caption_active_color="#ff3cac"."""
+        params = dict(overrides, w=width, animated="1" if animated else "0")
+        resp = self._t.request("GET", f"/api/caption-styles/{style_id}/preview", params=params, stream=True)
+        with open(path, "wb") as fh:
+            for chunk in resp.iter_content(1 << 16):
+                fh.write(chunk)
+        return str(path)
+
+
 class Wisko:
     """`Wisko(api_key=None, base_url=None)`; the key defaults to WISKO_API_KEY,
     the base URL to WISKO_BASE_URL or https://app.wiskoai.com."""
@@ -175,6 +227,7 @@ class Wisko:
                              base_url or os.environ.get("WISKO_BASE_URL", DEFAULT_BASE_URL),
                              timeout, max_retries, session)
         self.jobs = Jobs(self._t)
+        self.catalogues = Catalogues(self._t)
 
     def me(self) -> dict:
         """The key's plan, screens and limits."""
