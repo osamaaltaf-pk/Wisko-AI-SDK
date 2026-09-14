@@ -15,6 +15,8 @@ All responses are JSON unless noted. Errors always look like:
 | `/v1/keys` (create, list, revoke) | `X-License-Key: wsk_...` — your Wisko licence key |
 | everything else | `Authorization: Bearer wsk_live_...` — an API key |
 
+Signed in to the dashboard, the **Developers** page (`/settings#developers`) creates, lists and revokes keys without the licence key.
+
 An API key acts with its licence's plan: the same screens, images per job, jobs at a time and credits as the app.
 
 ---

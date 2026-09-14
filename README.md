@@ -48,7 +48,7 @@ pip install "git+https://github.com/osamaaltaf-pk/Wisko-AI-SDK.git#subdirectory=
 ```
 
 1. Get a Wisko licence key (`wsk_...`) from the app or your purchase email.
-2. Create an API key with it — shown **once**, store it safely:
+2. Create an API key — shown **once**, store it safely. Easiest: sign in at [app.wiskoai.com/settings#developers](https://app.wiskoai.com/settings#developers) → **Developers** → **Create API key**. Or with your licence key:
 
    ```bash
    curl -X POST https://app.wiskoai.com/v1/keys \
@@ -94,7 +94,7 @@ More in [`python/README.md`](python/README.md) and [`examples/`](examples/).
 ## Security
 
 - Never put an API key in client-side code or a public repository. Use environment variables.
-- Keys can be listed and revoked with your licence key (`GET /v1/keys`, `DELETE /v1/keys/{key_prefix}`).
+- Keys can be listed and revoked on the dashboard's **Developers** page, or with your licence key (`GET /v1/keys`, `DELETE /v1/keys/{key_prefix}`).
 - Only a key's prefix is ever shown after creation.
 - Report a security issue to **privacy@wiskoai.com**.
 
