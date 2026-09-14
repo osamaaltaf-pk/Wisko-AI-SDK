@@ -75,6 +75,7 @@ Never invent ids. Fetch these public lists (no key) and pick from them:
 | Voice | `GET https://app.wiskoai.com/api/tts/voices` → `voices[].id` | `tts_voice` |
 | Music | `GET https://app.wiskoai.com/api/music` → `tracks[].id` | `music_track` |
 | Scene transition | `GET https://app.wiskoai.com/api/transitions` → `transitions[].value` | `transition_type` |
+| Caption style | `GET https://app.wiskoai.com/api/caption-styles` → `styles[].id` (preview: `/api/caption-styles/{id}/preview`, animated WebP) | `caption_style` with `captions=on` |
 | Drawing hand | `GET https://app.wiskoai.com/api/hand-styles` → `groups[].assets[].id` | `hand_style` |
 | Output formats | `GET https://app.wiskoai.com/auto/api/video_formats` | `aspect_ratio`, `resolution` |
 

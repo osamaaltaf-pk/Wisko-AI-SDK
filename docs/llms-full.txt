@@ -337,6 +337,36 @@ The effect library is at `GET /auto/api/visual_effects` (ids, sizes, entrances, 
 | `pen_sound_intensity` | enum | `light`, `normal`, `heavy` | `normal` | Pen sound character |
 | `pen_surface` | enum | `auto`, `marker`, `chalk`, `pencil` | `auto` | Which writing-surface recording |
 
+### Captions
+
+Word-synced captions drawn over the video, TikTok/YouTube style. Off unless you send `captions`. Each beat shows a few words; the word being spoken is highlighted; one key word a beat (numbers, money, words written in the picture) is emphasised. Captions sit in the platform safe zone and are drawn above the drawing hand.
+
+| Field | Type | Allowed values | Default | What it does |
+|---|---|---|---|---|
+| `captions` | bool | `on`, `off` (`true`/`false`, `1`/`0`) | `off` | Turn captions on |
+| `caption_style` | id | see `GET /api/caption-styles` (`hormozi_bold`, `beast_pop`, `karaoke_fill`, `creator_badge`, `spotlight_card`, `neon_glow`, `bold_duo`, `comic_burst`, `signature_flow`, `mono_stack`, `golden_frame`, `flame`, `whiteboard_marker`) | `hormozi_bold` | The look; every field below overrides one part of it |
+| `caption_words` | int | 1–8 | the style's (1–5) | Words on screen at a time (a beat) |
+| `caption_position` | enum | `auto`, `bottom`, `middle`, `top` | `bottom` | `auto` keeps to bottom unless the drawing is busier there |
+| `caption_emphasis` | enum | `auto`, `off` | `auto` | Emphasise one key word a beat |
+| `caption_highlight` | enum | `color`, `box`, `karaoke`, `glow`, `scale`, `none` | the style's | How the spoken word stands out |
+| `caption_animation` | enum | `pop`, `bounce`, `rise`, `fade`, `none` | the style's | How each beat enters |
+| `caption_font` | id | a font id from `GET /api/caption-styles` `fonts` | the style's | Typeface |
+| `caption_size` | float | 0.03–0.2 (share of the frame height) | the style's | Text size |
+| `caption_bold` | bool | `true`, `false` | the style's | Bold |
+| `caption_italic` | bool | `true`, `false` | the style's | Italic |
+| `caption_uppercase` | bool | `true`, `false` | the style's | ALL CAPS |
+| `caption_glow` | bool | `true`, `false` | the style's | Glow around the words |
+| `caption_color` | hex | `#rrggbb` | the style's | Text colour |
+| `caption_active_color` | hex | `#rrggbb` | the style's | Spoken-word colour |
+| `caption_emphasis_color` | hex | `#rrggbb` | the style's | Emphasised-word colour |
+| `caption_outline_color` | hex | `#rrggbb` | the style's | Outline colour |
+| `caption_outline_width` | float | 0–0.3 (share of the text size) | the style's | Outline thickness |
+| `caption_glow_color` | hex | `#rrggbb` | the style's | Glow colour |
+| `caption_box_color` | hex | `#rrggbb` | the style's | Box colour (box styles) |
+| `captions_json` | JSON | an object with the settings keys above (`enabled`, `style`, `words_per_beat`, `position`, `emphasis`, `emphasis_words`, `font_family`, `size`, colours…) | none | All caption settings in one field; `emphasis_words` (`{"profit": true, "the": false}`) forces or blocks emphasis per word |
+
+See how a style moves before you choose it: `GET /api/caption-styles/{id}/preview` returns a looping animated WebP of the beats, spoken word and entrance, drawn by the render's own caption engine. Add any `caption_*` field above as a query parameter to preview your overrides; `w` sets the width (120–720); `animated=0` returns a still PNG.
+
 ### Engine (advanced)
 
 These are the drawing-engine settings a style sets. Send them only to override a style.
@@ -428,6 +458,8 @@ Public `GET` endpoints on `https://app.wiskoai.com`; no key needed. Use them to 
 | `GET /api/entrance-effects` | `{effects: [{value, label, group, sound, text_ok}]}` |
 | `GET /api/hand-styles` | `{groups: [{label, assets: [{id, label, preview_url}]}], default}` |
 | `GET /api/music` | `{tracks: [{id, title, mood_tags, duration, preview_url, license}]}` |
+| `GET /api/caption-styles` | `{styles: [{id, label, blurb, font_family, words_per_beat, ...}], default, positions, highlights, animations, emphasis_modes, fonts: [{id, family, category}], form_fields}` |
+| `GET /api/caption-styles/{id}/preview?w=&animated=` | the style as a looping animated WebP (or PNG with `animated=0`) |
 | `GET /auto/api/visual_effects` | `{effects: [...], sizes, importances, modes, entrances, exits, text_animations}` |
 | `GET /api/sfx-library` | `{sounds: [{id, label, family, tags, loop}]}` |
 | `GET /auto/api/video_formats` | `{aspects, resolutions, default_aspect, default_resolution, max_resolution}` |
