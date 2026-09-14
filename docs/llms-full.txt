@@ -1,0 +1,467 @@
+# Wisko AI Developer Documentation
+
+> Wisko AI turns images and narration, or a single prompt, into narrated, hand-drawn whiteboard videos. This document is the complete reference for the Wisko Developer API, the Python SDK, the public catalogue endpoints and the rules every job follows. It is written for developers and for AI agents building products on Wisko.
+
+Base URL: `https://app.wiskoai.com` · SDK: https://github.com/osamaaltaf-pk/Wisko-AI-SDK · Dashboard: https://app.wiskoai.com/settings#developers
+
+## Get Started
+
+### Overview
+
+Wisko renders a video in five steps. Every job, from the web app, the desktop app, a batch or this API, goes through the same pipeline and the same plan rules.
+
+1. **Plan** (AI-planned jobs only): the script and scenes are written from your prompt.
+2. **Images**: generated for AI-planned jobs, or your own for manual jobs.
+3. **Narration**: text-to-speech in the voice you choose. The narration decides the video's length.
+4. **Vision**: each element and the words that name it are found, so the drawing lands on the right word.
+5. **Render**: hand drawing, text written letter by letter, camera, visual effects, sound effects, music, final MP4.
+
+There are two kinds of job:
+
+| Kind | You send | You get |
+|---|---|---|
+| **Manual** | Images in scene order and one narration line per image | Each image drawn in sync with its line |
+| **AI-planned (Agent)** | A prompt; images are optional references | Wisko plans the scenes, generates the art, narrates and renders |
+
+### Quickstart
+
+**1. Get an API key.** Sign in at https://app.wiskoai.com/settings#developers, open **Developers** and press **Create API key**. The key is shown once. Store it as an environment variable, never in client-side code.
+
+**2. Add your AI provider keys.** Model calls (planning, image generation, vision, paid voices) run on your own provider keys, added once under **Settings → Providers** (Google AI Studio or Vertex, OpenAI, Anthropic, fal, Replicate, ElevenLabs and others). A job that needs a key you have not added is refused before it starts, and the error names the missing step. Plans that include Wisko-managed keys say so on the plan.
+
+**3. Install the SDK and make a video.**
+
+```bash
+pip install "git+https://github.com/osamaaltaf-pk/Wisko-AI-SDK.git#subdirectory=python"
+export WISKO_API_KEY=wsk_live_...
+```
+
+```python
+from wisko import Wisko
+
+client = Wisko()  # reads WISKO_API_KEY
+
+job = client.jobs.create(
+    images=["01.png", "02.png"],                  # one image per scene, in order
+    narration=["A black bear finds a bramble.",   # exactly one line per image
+               "It picks the ripest berries."],
+    style_id="doodle_notes",
+    tts_voice="kokoro_af_heart",
+)
+job = client.jobs.wait(job.id, on_progress=lambda j: print(j.status, j.progress))
+client.jobs.download(job.id, "bear.mp4")
+```
+
+The same with curl:
+
+```bash
+curl -X POST https://app.wiskoai.com/v1/jobs \
+  -H "Authorization: Bearer $WISKO_API_KEY" \
+  -H "Idempotency-Key: $(uuidgen)" \
+  -F images=@01.png -F images=@02.png \
+  -F $'narration=A black bear finds a bramble.\nIt picks the ripest berries.' \
+  -F style_id=doodle_notes
+
+curl https://app.wiskoai.com/v1/jobs/JOB_ID -H "Authorization: Bearer $WISKO_API_KEY"
+curl -L https://app.wiskoai.com/v1/jobs/JOB_ID/video -H "Authorization: Bearer $WISKO_API_KEY" -o video.mp4
+```
+
+### Authentication
+
+| Endpoints | How to authenticate |
+|---|---|
+| `/v1/keys` (create, list, revoke) | The signed-in dashboard session, or `X-License-Key: wsk_...` (your licence key) |
+| Every other `/v1` endpoint | `Authorization: Bearer wsk_live_...` (an API key) |
+| Catalogue endpoints (`/api/...` listed below) | None; they are public |
+
+An API key acts with its licence's plan: the same screens, images per job, jobs at a time and credits as the web app. Keys can be listed and revoked on the dashboard's Developers page. Only a key's prefix is shown after creation.
+
+### Plans, limits and billing
+
+- **Images per job** come from the plan (`GET /v1/me` → `limits.images_per_job`; 200 on cloud plans).
+- **Manual jobs:** narration rows must equal the number of images. A blank row in the middle is a silent scene; trailing blank lines are ignored. A mismatch is refused before anything is queued or charged.
+- **Jobs at a time** come from the plan. **Requests per minute** (default 60) and **jobs per day** (default 200) are set per API key; `null` means unlimited.
+- Over any limit the API answers `429` straight away with `Retry-After`. There is no queue.
+- **Cloud billing** uses credits from the licence balance, bought in packs of $20, $100 or $500 (1 credit = $1, credits never expire):
+  - Wisko Compute: 1 credit for a video up to 15 minutes, 2 up to 25, 3 up to 50.
+  - BYO GCP (your own Google Cloud): half a credit per video, any length.
+  - Shorts: a tenth of a credit each.
+- Credits are reserved from the narration estimate when a job starts and settled on the finished video's real length; a failed job is refunded in full.
+- Desktop licences render on your own machine and are not charged per video.
+
+## Guides
+
+### Manual video from your images
+
+Send images in scene order and one narration line per image. Image formats: png, jpg, webp, bmp.
+
+```python
+job = client.jobs.create(
+    images=["intro.png", "problem.png", "solution.png"],
+    narration="Meet Sam, a small bakery owner.\nSam's oven keeps breaking.\nA smart sensor warns Sam before it fails.",
+    style_id="marker_pop",
+    aspect_ratio="16:9",
+    resolution="1080p",
+    music_track="driving_ambition_32",
+    sfx_density="standard",
+)
+```
+
+### AI-planned video from a prompt
+
+```python
+job = client.jobs.create(
+    prompt="A 60-second explainer on why bees matter to farms.",
+    style_id="doodle_notes",
+    duration=60,            # a target; the narration decides the final length
+    tts_voice="kokoro_af_heart",
+)
+```
+
+AI-planned jobs need the Agent feature on your plan and provider keys for planning, image generation and vision.
+
+### Choosing styles, voices, music and effects
+
+Never hard-code names from memory. Read the live catalogues (public, no key) and pass the ids:
+
+```python
+import requests
+BASE = "https://app.wiskoai.com"
+styles = requests.get(f"{BASE}/api/packs").json()["data"]           # {style_id: {...}}
+voices = requests.get(f"{BASE}/api/tts/voices").json()["voices"]    # [{id, name, language, engine}]
+music  = requests.get(f"{BASE}/api/music").json()["tracks"]         # [{id, title, mood_tags, duration}]
+transitions = requests.get(f"{BASE}/api/transitions").json()["transitions"]
+```
+
+A style (`style_id`) sets the board, pen, motion and sound together. Any setting you send overrides the style's default.
+
+### Waiting for a video
+
+Poll `GET /v1/jobs/{id}` every few seconds until `status` is `done`, `failed` or `cancelled`. The SDK's `jobs.wait()` does this. Webhooks are not available yet.
+
+### Errors and retries
+
+Every error body is `{"error": {"code": "...", "message": "..."}}`.
+
+- Retry `429` after `Retry-After`, and `5xx` or network errors with exponential backoff.
+- Do not retry `400`, `401`, `402`, `403`, `404`: fix the request, key or plan.
+- Always send an `Idempotency-Key` on create (the SDK does). A retried create with the same key returns the original job instead of making a second one.
+
+### Building products on Wisko
+
+- Keep API keys on your server. Your users talk to your backend; your backend talks to Wisko.
+- One Wisko licence can hold many API keys: create one per environment or per customer and set per-key limits.
+- Map your users' choices to catalogue ids, not to free text.
+- Store the Wisko job id with your own record, poll or wait in a background worker, then download the MP4 to your own storage.
+- For enterprise volume (for example 1000 images per job or unlimited jobs per day), Wisko sets up a custom plan and keys: https://wiskoai.com/contact
+
+## API Reference
+
+### Keys
+
+#### Create a key: `POST /v1/keys`
+
+```bash
+curl -X POST https://app.wiskoai.com/v1/keys \
+  -H "X-License-Key: $WISKO_LICENSE_KEY" -H "Content-Type: application/json" \
+  -d '{"label": "production server"}'
+```
+
+`201`
+
+```json
+{"api_key": "wsk_live_...", "key_prefix": "wsk_live_ab12cd34", "label": "production server",
+ "rpm": 60, "jobs_per_day": 200, "note": "Shown once. Store it now; only its prefix is listed later."}
+```
+
+`402 no_plan` when the licence has no active plan.
+
+#### List keys: `GET /v1/keys`
+
+```json
+{"data": [{"key_prefix": "wsk_live_ab12cd34", "label": "production server", "created_at": 1789000000.0,
+           "last_used_at": 1789003600.0, "revoked_at": null, "rpm": 60, "jobs_per_day": 200}]}
+```
+
+#### Revoke a key: `DELETE /v1/keys/{key_prefix}`
+
+`200 {"revoked": "wsk_live_ab12cd34"}` · `404 not_found`
+
+### Account
+
+#### `GET /v1/me`
+
+```json
+{"key_prefix": "wsk_live_ab12cd34", "plan": "cloud_payg",
+ "features": {"studio": true, "batch": true, "agent": true, "auto_jobs": true, "manual_jobs": true},
+ "limits": {"images_per_job": 200, "concurrent_jobs": 2}, "rpm": 60, "jobs_per_day": 200}
+```
+
+### Jobs
+
+#### Create and start a job: `POST /v1/jobs`
+
+`multipart/form-data`. Send the header `Idempotency-Key: <unique string>`.
+
+| Field | Required | Description |
+|---|---|---|
+| `images` | manual: yes | Repeat once per image, in scene order (png, jpg, webp, bmp) |
+| `narration` | manual: yes | Newline-separated text, exactly one line per image |
+| `prompt` | AI-planned: yes | What the video is about; images become optional references |
+| any setting | no | Any field from the Settings reference below |
+
+`202`
+
+```json
+{"id": "2aa93429-cfa0", "status": "queued", "status_url": "/v1/jobs/2aa93429-cfa0"}
+```
+
+Replaying the same `Idempotency-Key` returns `200` with `"idempotent_replay": true`.
+
+Refusals (nothing is queued or charged):
+
+| HTTP | code | When |
+|---|---|---|
+| 400 | `invalid_request` | no images and no prompt; narration rows ≠ images; more images than the plan allows; a needed provider key is missing (the message names it) |
+| 400 | `unsupported_image` | not png, jpg, webp or bmp |
+| 402 | `plan_does_not_allow` | the plan does not include this kind of job, or not enough credits |
+| 429 | `concurrency_limit` | jobs at a time for the plan |
+| 429 | `daily_job_limit` | this key's jobs per day (`Retry-After`) |
+| 4xx | `job_not_started` | created but could not start (for example credits); the body carries `id` |
+
+#### Job status: `GET /v1/jobs/{id}`
+
+```json
+{"id": "2aa93429-cfa0", "status": "running", "progress": 60,
+ "stages": {"plan": "done", "imagegen": "done", "tts": "done", "vlm": "running", "render": "pending"},
+ "error": null, "video_url": null}
+```
+
+`status` is one of `queued`, `running`, `done`, `failed`, `cancelled`. When `done`, `video_url` is `/v1/jobs/{id}/video`.
+
+#### List jobs: `GET /v1/jobs?limit=20`
+
+This key's jobs, newest first (`limit` 1–100).
+
+#### Download the video: `GET /v1/jobs/{id}/video`
+
+The MP4 (`Content-Type: video/mp4`). `409 not_ready` until the job is done.
+
+### Errors
+
+| HTTP | code | Meaning |
+|---|---|---|
+| 400 | `invalid_request` | bad or missing input |
+| 401 | `invalid_api_key` | missing, invalid or revoked API key |
+| 401 | `licence_required` | `/v1/keys` needs a signed-in session or `X-License-Key` |
+| 402 | `no_plan` / `plan_does_not_allow` | plan or credits |
+| 404 | `not_found` | not a job of this key |
+| 409 | `not_ready` | video not finished |
+| 429 | `rate_limited` | requests per minute for this key (`Retry-After`) |
+| 429 | `daily_job_limit` / `concurrency_limit` | job limits |
+| 503 | `keys_unavailable` / `auth_unavailable` | temporary; retry with backoff |
+
+## Settings Reference
+
+Every setting below can be sent as a form field on `POST /v1/jobs` (or as a keyword argument to `client.jobs.create`). Omitted settings take the style's default, then the platform default. Booleans accept `true`/`false`. Settings apply to the whole video.
+
+### Output
+
+| Field | Type | Allowed values | Default | What it does |
+|---|---|---|---|---|
+| `aspect_ratio` | enum | `16:9`, `9:16`, `1:1`, `4:5`, `5:4`, `4:3`, `3:4`, `3:2`, `2:3`, `21:9`, `2.39:1`, `original` (also `portrait`, `landscape`, `square`) | `16:9` | Output frame shape; the picture is letterboxed, never cropped |
+| `resolution` | enum | `720p`, `1080p`, `1440p` | `1080p` | Output size; capped by the plan (`GET /auto/api/video_formats`) |
+| `duration` | int (s) | 15–1800 | planner default (60) | AI-planned target length; with the voice off, split evenly across manual scenes |
+| `end_hold_seconds` | float (s) | ≥ 0 | `0` | Hold the finished drawing at the end of each scene |
+| `style_id` | id | see `GET /api/packs` (for example `marker_pop`, `doodle_notes`, `chalk_lecture`, `blueprint_tech`, `kids_crayon`, `storybook_ink`, `neon_chalkboard`, `minimal_grey`) | none | Style pack: board, pen, motion and sound defaults |
+| `render_mode` | enum | `slide` (one scene at a time), `canvas` (scenes as nodes on one camera canvas) | style default, else `slide` | Scene layout |
+| `region_by_region` | bool | `true`, `false` | style default | Draw each element in turn instead of the whole picture at once |
+
+### Narration
+
+| Field | Type | Allowed values | Default | What it does |
+|---|---|---|---|---|
+| `tts_enabled` | bool | `true`, `false` | `true` | Voice-over on or off; off skips narration and word timing |
+| `tts_voice` | id | see `GET /api/tts/voices` (for example `kokoro_af_heart`, `kokoro_am_michael`, `kokoro_bf_emma`, `alba`, `marius`; `fish_<ref>` and `litellm:<provider>:<model>:<voice>` with your provider key) | `alba` | Narration voice |
+| `tts_language` | string | `english`, `french`, `german`, `italian`, `portuguese`, `spanish` (Kokoro voices carry their language in the id) | `english` | Language the narration is read in |
+
+### Drawing and hand
+
+| Field | Type | Allowed values | Default | What it does |
+|---|---|---|---|---|
+| `draw_hand` | bool | `true`, `false` | `true` | Show the drawing hand |
+| `hand_style` | id | see `GET /api/hand-styles` (for example `illus_clean_line`, `illus_comic_ink`, `illus_anime`, `real_chef_white_jacket`) | `illus_clean_line` | Which hand is drawn |
+| `hand_size` | enum | `extra_small`, `small`, `medium`, `large`, `largest` | `largest` | Hand size |
+| `colour_hand_mode` | enum | `follow`, `smooth`, `ahead`, `lift` | engine default | How the hand moves while colouring (Wisko-1 engine) |
+| `text_as_text` | enum | `always`, `region_only`, `never` | `always` | Write lettering found in the image letter by letter, or paint it with the picture |
+
+### Transitions and entrances
+
+| Field | Type | Allowed values | Default | What it does |
+|---|---|---|---|---|
+| `transition_type` | id | see `GET /api/transitions` (for example `none`, `cross_dissolve`, `fade_through_black`, `zoom_fly`, `whip_pan`, `page_turn`, `torn_paper`), or `random` | `random` | Transition between scenes |
+| `transition_pool` | CSV | groups `signature`, `fades`, `camera`, `pushes_wipes`, `shapes`, `paper_impact`, `fly_out`, `all`, and/or transition ids | full library | What `random` picks from |
+| `entrance_mode` | enum | `off`, `random`, `always` | on for element-by-element drawing, off for whole-picture | Entrance effects on elements |
+| `entrance_pool` | CSV | ids from `GET /api/entrance-effects` (for example `fade_in`, `pop_in`, `zoom_in`, `bounce_in`, `slide_in_left`, `wipe_up`, `typewriter_in`) | whole library | Which entrances may be used |
+| `global_entrance_pct` | number | 0–100 | `15` | Share of elements that get an entrance |
+| `global_max_entrances` | int | ≥ 0 | `3` | Most entrances per scene |
+| `entrance_sfx` | bool | `true`, `false` | `true` | Sound on entrances |
+
+### Visual effects
+
+| Field | Type | Allowed values | Default | What it does |
+|---|---|---|---|---|
+| `visual_effects` | enum | `auto`, `manual`, `off` | `auto` | Automatic effects on the narration's emphasis, only user overlays, or none |
+| `recall_effects` | bool | `true`, `false` | `true` | Highlight an element that appeared earlier when the narration returns to it |
+| `recall_decorative` | bool | `true`, `false` | `true` | Allow recall treatments as decoration |
+
+The effect library is at `GET /auto/api/visual_effects` (ids, sizes, entrances, text animations).
+
+### Sound
+
+| Field | Type | Allowed values | Default | What it does |
+|---|---|---|---|---|
+| `sound_design_mode` | enum | `auto`, `directed` | `auto` | `directed` has an AI director review the sound design (uses your LLM key) |
+| `sfx_density` | enum | `light`, `standard`, `rich` | `standard` | How many automatic sound cues |
+| `sfx_source` | enum | `effects`, `words`, `both` | `effects` | Cues from visual events, spoken words, or both |
+| `sfx_gain` | name or int | `off`, `subtle`, `normal`, `strong`, or 0–20 | `normal` | Sound-effects volume |
+| `element_sfx` | bool | `true`, `false` | `true` | Drawn things get their own sounds (a clock ticks) |
+| `element_sfx_pct` | int | 0–100 | `100` | Share of eligible elements that get a sound |
+| `cue_ocr` | bool | `true`, `false` | `true` | Sound cues may come from text on the board |
+| `cue_words` | bool | `true`, `false` | `true` | Sound cues may come from spoken words |
+| `cue_concepts` | bool | `true`, `false` | `true` | Sound cues may come from what vision found in the picture |
+| `music_track` | id | see `GET /api/music` (for example `driving_ambition_32`, `purple_js_453`, `we_own_the_night_roll_out_320`) | none | Background music |
+| `music_gain` | name or int | `off`, `subtle`, `normal`, or 0–100 | `normal` | Music volume |
+| `pen_sound` | bool | `true`, `false` | follows `draw_hand` | Pen sound under each stroke |
+| `pen_sound_level` | int | 0–20 | `10` | Pen sound volume |
+| `pen_sound_intensity` | enum | `light`, `normal`, `heavy` | `normal` | Pen sound character |
+| `pen_surface` | enum | `auto`, `marker`, `chalk`, `pencil` | `auto` | Which writing-surface recording |
+
+### Engine (advanced)
+
+These are the drawing-engine settings a style sets. Send them only to override a style.
+
+#### Engine: Render mode
+
+| Field | Type | Allowed values | Default | What it does |
+|---|---|---|---|---|
+| `end_on_overview` | bool | `true`, `false` | `false` | End on a wide shot |
+| `easing` | select | `ease_in_out`, `ease_in_out_cubic`, `linear`, `ease_out` | `ease_in_out` | Camera easing |
+
+#### Engine: Engine & surface
+
+| Field | Type | Allowed values | Default | What it does |
+|---|---|---|---|---|
+| `colouring_method` | select | `sweep`, `golpo`, `golpo_v2` | `sweep` | Colouring engine |
+| `canvas_bg` | select | `whiteboard`, `whiteboard_wall`, `blackboard`, `greenboard`, `blueprint`, `grid_paper`, `vintage`, `darkness` | `whiteboard` | Board |
+| `style` | select | `marker`, `pencil`, `watercolor`, `chalk`, `ink`, `crayon`, `vector_fill` | `marker` | Brush |
+| `outline_color` | color | color | `#000000` | Outline colour |
+| `outline_width` | number | 1–20 | `6` | Outline width (px) |
+| `noise_level` | range | 0–2 | `1.0` | Line wobble. 1.0 is the shipped look. 0 is perfectly clean. |
+| `color_boost` | bool | `true`, `false` | `false` | Boost saturation |
+| `color_style` | text | text |  | Colour style (optional). Leave blank for the engine default. |
+| `drawing_style` | text | text | `custom` | Drawing style |
+
+#### Engine: Wisko-1 · sweep
+
+| Field | Type | Allowed values | Default | What it does |
+|---|---|---|---|---|
+| `sweep_direction` | select | `top_to_bottom`, `bottom_to_top`, `left_to_right`, `right_to_left` | `top_to_bottom` | Sweep direction |
+| `random_sweep` | bool | `true`, `false` | `false` | Counter-clockwise / random sweep |
+| `drawing_flow` | select | `global`, `simultaneous`, `segmented`, `outline_color`, `color_only` | `global` | Drawing flow |
+| `speed_curve` | select | `linear`, `ease_in_out`, `ease_out`, `human` | `linear` | Speed profile |
+| `color_time_ratio` | range | 0.2–3 | `1.0` | Colour vs outline time. Above 1 spends longer colouring than outlining. |
+
+#### Engine: Wisko-2/3 · reveal
+
+| Field | Type | Allowed values | Default | What it does |
+|---|---|---|---|---|
+| `golpo_mode` | select | `simultaneous`, `sequential`, `v2` | `simultaneous` | Reveal mode. Wisko-3 is always 'v2' (GROUND_TRUTH §15ah); Wisko-1 has no reveal mode. |
+| `lead_frames` | number | 0–60 |  | Paint lag (frames). How far colour trails the outline. Blank uses the engine default (6). |
+| `cross_element_lead` | number | 0–60 | `6` | Cross-element lead (frames) |
+| `soft_edge` | number | 0–0 | `0` | Soft edge (Wisko-3). Fixed at 0 — no translucent film ahead of the fronts (6c5ea84). |
+
+#### Engine: Camera, zoom & entrances
+
+| Field | Type | Allowed values | Default | What it does |
+|---|---|---|---|---|
+| `camera_preset` | select | `youtube`, `saas`, `deck`, `ad` | `youtube` | Camera preset (planner hint) |
+| `zoom_scale` | range | 1.1–2.5 | `1.8` | Zoom depth. Capped per region so a subject never leaves the frame. |
+| `entrance_effect` | select | `auto`, `sketch`, `fade_in`, `blur_in`, `slide_in_left`, `slide_in_right`, `slide_in_top`, `slide_in_bottom`, `fly_in_top_left`, `fly_in_top_right`, `fly_in_bottom_left`, `fly_in_bottom_right`, `drop_bounce`, `zoom_in`, `pop_in`, `bounce_in`, `spin_in`, `flip_in`, `3d_rotate`, `wipe_left`, `wipe_right`, `wipe_top`, `wipe_bottom`, `iris_in`, `capture`, `camera_flash`, `stamp_in`, `unfold_in`, `peel_on`, `typewriter_in`, `draw_settle`, `magnify_settle`, `shake_in`, `rise_shadow`, `assemble_in`, `blinds_in`, `split_in`, `ripple_in`, `uncrumple_in` | `auto` | Entrance effect |
+| `global_intra_zoom` | tri | tri |  | Region zoom. Leave on Auto so region mode keeps its reveals. |
+| `global_intra_zoom_random` | tri | tri |  | Region zoom — randomise |
+| `global_entrance_effects` | tri | tri |  | Entrance effects |
+| `global_entrance_effects_random` | tri | tri |  | Entrance effects — randomise |
+| `camera_follow` | bool | `true`, `false` | `false` | Camera follows the pen |
+| `template_zoom` | bool | `true`, `false` | `false` | Template zoom |
+| `render_template` | select | ``, `desk`, `easel`, `tablet` |  | Physical template |
+| `directional_preset` | select | `left_to_right`, `right_to_left`, `top_to_bottom`, `bottom_to_top`, `radial` | `left_to_right` | Element order. Text always writes left-to-right regardless of this. |
+| `canvas_flow` | select | `manual`, `left_to_right`, `top_to_bottom`, `top_left_to_bottom_right` | `manual` | Canvas flow order |
+| `region_order_mode` | select | `lasso`, `reading`, `size` | `lasso` | Region order |
+
+#### Engine: Transitions
+
+| Field | Type | Allowed values | Default | What it does |
+|---|---|---|---|---|
+| `transition_type` | select | see `transitions` | `cross_dissolve` | Scene transition. Between scenes (web/transitions_lib). The paired sound lands on the visual. |
+| `transition_frames` | number | 0–45 | `12` | Transition length (frames) |
+| `transition_dur` | range | 0.1–2.0 |  | Transition length (seconds, canvas + stitch). Blank = the transition's own default length. |
+
+#### Engine: Planner
+
+| Field | Type | Allowed values | Default | What it does |
+|---|---|---|---|---|
+| `dispatch` | select | ``, `batch`, `realtime` |  | Planner dispatch. Vertex cost mode for the planner (GROUND_TRUTH §15i). |
+
+
+## Catalogues
+
+Public `GET` endpoints on `https://app.wiskoai.com`; no key needed. Use them to fill your app's pickers with valid ids.
+
+| Endpoint | Returns |
+|---|---|
+| `GET /api/packs` | `{data: {style_id: {id, name, description, preview_gif, render_mode, user_defaults, engine_settings, sound}}}` |
+| `GET /api/tts/voices?engine=&lang=` | `{voices: [{id, name, group, engine, lang, language}], groups, by_language}` |
+| `GET /api/tts/voices/sample/{voice}` | an audio sample of the voice |
+| `GET /api/tts/voices?engine=litellm&provider=&model=` | cloud voices available with your provider keys |
+| `GET /api/transitions` | `{transitions: [{value, label, seconds}], groups, signature}` |
+| `GET /api/entrance-effects` | `{effects: [{value, label, group, sound, text_ok}]}` |
+| `GET /api/hand-styles` | `{groups: [{label, assets: [{id, label, preview_url}]}], default}` |
+| `GET /api/music` | `{tracks: [{id, title, mood_tags, duration, preview_url, license}]}` |
+| `GET /auto/api/visual_effects` | `{effects: [...], sizes, importances, modes, entrances, exits, text_animations}` |
+| `GET /api/sfx-library` | `{sounds: [{id, label, family, tags, loop}]}` |
+| `GET /auto/api/video_formats` | `{aspects, resolutions, default_aspect, default_resolution, max_resolution}` |
+| `GET /auto/api/sound_direction/schema` | the sound-direction document schema: mark kinds, roles, sound ids, effect ids, limits |
+
+## SDK
+
+### Python
+
+Source and README: https://github.com/osamaaltaf-pk/Wisko-AI-SDK/tree/main/python
+
+| Call | Does |
+|---|---|
+| `Wisko(api_key=None, base_url=None, timeout=120, max_retries=3)` | Client; key from `WISKO_API_KEY` |
+| `client.me()` | Plan, features, limits |
+| `client.jobs.create(images=..., narration=..., prompt=..., idempotency_key=None, **settings)` | Create and start a job |
+| `client.jobs.get(id)` / `client.jobs.list(limit=20)` | Status / recent jobs |
+| `client.jobs.wait(id, timeout=10800, poll_interval=5, on_progress=None)` | Poll until done; raises `JobFailedError` |
+| `client.jobs.download(id, path)` | Save the MP4 |
+
+Errors: `AuthenticationError` (401), `PlanError` (402/403), `RateLimitError` (429, `retry_after`), `InvalidRequestError` (400/409), `NotFoundError` (404), `JobFailedError`, `ServerError` (5xx after retries). The client retries network errors, 5xx and short rate limits with backoff.
+
+## Roadmap
+
+Available in the Wisko web app today and coming to the Developer API:
+
+- Cancel a job, and re-render a finished job with new settings
+- Webhooks (a push when a video is done)
+- Batches (many videos in one call) and Shorts
+- Per-scene settings and Timeline editing: change one scene's script, voice, effects, camera or overlays (image, GIF, video and animated text) and re-render only that scene
+- Uploading your own plan, sound direction, narration audio, music and documents with a job
+
+## Support
+
+- Email: support@wiskoai.com
+- Security or privacy: privacy@wiskoai.com
+- SDK issues: https://github.com/osamaaltaf-pk/Wisko-AI-SDK/issues

@@ -9,8 +9,10 @@ This repository holds the public pieces for developers:
 | [`python/`](python/) | The official Python SDK (`wisko`) |
 | [`docs/API.md`](docs/API.md) | REST API reference (every public endpoint, fields, errors, limits) |
 | [`examples/`](examples/) | Runnable examples: manual video, AI-planned video, raw `curl` |
+| [`AGENT_SKILL.md`](AGENT_SKILL.md) | Instructions for AI agents building products on Wisko |
+| [`docs/llms-full.txt`](docs/llms-full.txt) | The complete reference in one Markdown file (every setting and catalogue) |
 
-Website: [wiskoai.com](https://wiskoai.com) · App: [app.wiskoai.com](https://app.wiskoai.com)
+Docs: [wiskoai.com/docs](https://wiskoai.com/docs) · [llms.txt](https://wiskoai.com/llms.txt) · Website: [wiskoai.com](https://wiskoai.com) · App: [app.wiskoai.com](https://app.wiskoai.com)
 
 ---
 
@@ -100,7 +102,7 @@ More in [`python/README.md`](python/README.md) and [`examples/`](examples/).
 
 ## Support
 
-- Docs: [`docs/API.md`](docs/API.md)
+- Docs: [wiskoai.com/docs](https://wiskoai.com/docs) (full settings reference) and [`docs/API.md`](docs/API.md)
 - Email: **support@wiskoai.com**
 - Issues with the SDK: open a GitHub issue in this repository.
 
